@@ -4,9 +4,9 @@ import mock
 import pytest
 from py_zipkin.storage import get_default_tracer
 from py_zipkin.storage import Stack
+from py_zipkin.testing import MockTransportHandler
 
 from pyramid_zipkin import tween
-from tests.acceptance.test_helper import MockTransport
 
 
 DummyRequestContext = collections.namedtuple(
@@ -29,7 +29,7 @@ def test_zipkin_tween_sampling(
     """
     dummy_request.registry.settings = {
         'zipkin.is_tracing': lambda _: is_tracing,
-        'zipkin.transport_handler': MockTransport(),
+        'zipkin.transport_handler': MockTransportHandler(),
     }
     handler = mock.Mock()
     handler.return_value = dummy_response
@@ -58,7 +58,7 @@ def test_zipkin_tween_post_handler_hook(
 
     dummy_request.registry.settings = {
         'zipkin.is_tracing': lambda _: is_tracing,
-        'zipkin.transport_handler': MockTransport(),
+        'zipkin.transport_handler': MockTransportHandler(),
     }
     if set_callback:
         dummy_request.registry.settings['zipkin.post_handler_hook'] = \
@@ -85,7 +85,7 @@ def test_zipkin_tween_context_stack(
     old_context_stack = get_default_tracer()._context_stack
     dummy_request.registry.settings = {
         'zipkin.is_tracing': lambda _: False,
-        'zipkin.transport_handler': MockTransport(),
+        'zipkin.transport_handler': MockTransportHandler(),
         'zipkin.request_context': 'rctxstorage.zipkin_context',
     }
 
