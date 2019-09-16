@@ -7,17 +7,21 @@ import six
 from py_zipkin.util import generate_random_64bit_string
 from py_zipkin.zipkin import ZipkinAttrs
 from pyramid.interfaces import IRoutesMapper
+from pyramid.request import Request
+from pyramid.response import Response
+from typing import Dict
 
 
 DEFAULT_REQUEST_TRACING_PERCENT = 0.5
 
 
 def get_trace_id(request):
+    # type: (Request) -> str
     """Gets the trace id based on a request. If not present with the request,
     create a custom (depending on config: `zipkin.trace_id_generator`) or a
     completely random trace id.
 
-    :param: current active pyramid request
+    :param request: current active pyramid request
     :returns: a 64-bit hex string
     """
     if 'X-B3-TraceId' in request.headers:
@@ -35,6 +39,7 @@ def get_trace_id(request):
 
 
 def _convert_signed_hex(s):
+    # type: (str) -> str
     """Takes a signed hex string that begins with '0x' and converts it to
     a 16-character string representing an unsigned hex value.
     Examples:
@@ -47,11 +52,12 @@ def _convert_signed_hex(s):
 
 
 def should_not_sample_path(request):
+    # type: (Request) -> bool
     """Decided whether current request path should be sampled or not. This is
     checked previous to `should_not_sample_route` and takes precedence.
 
-    :param: current active pyramid request
-    :returns: boolean whether current request path is blacklisted.
+    :param request: current active pyramid request
+    :returns: whether current request path is blacklisted.
     """
     blacklisted_paths = request.registry.settings.get(
         'zipkin.blacklisted_paths', [])
@@ -65,10 +71,11 @@ def should_not_sample_path(request):
 
 
 def should_not_sample_route(request):
+    # type: (Request) -> bool
     """Decided whether current request route should be sampled or not.
 
-    :param: current active pyramid request
-    :returns: boolean whether current request route is blacklisted.
+    :param request: current active pyramid request
+    :returns: whether current request route is blacklisted.
     """
     blacklisted_routes = request.registry.settings.get(
         'zipkin.blacklisted_routes', [])
@@ -77,29 +84,30 @@ def should_not_sample_route(request):
         return False
     route_mapper = request.registry.queryUtility(IRoutesMapper)
     route_info = route_mapper(request).get('route')
-    return (route_info and route_info.name in blacklisted_routes)
+    return route_info and route_info.name in blacklisted_routes
 
 
 def should_sample_as_per_zipkin_tracing_percent(tracing_percent):
+    # type: (float) -> bool
     """Calculate whether the request should be traced as per tracing percent.
 
     :param tracing_percent: value between 0.0 to 100.0
-    :type tracing_percent: float
-    :returns: boolean whether current request should be sampled.
+    :returns: whether current request should be sampled.
     """
     return (random.random() * 100) < tracing_percent
 
 
 def is_tracing(request):
+    # type: (Request) -> bool
     """Determine if zipkin should be tracing
-    1) Check whether the current request path is blacklisted.
-    2) If not, check whether the current request route is blacklisted.
-    3) If not, check if specific sampled header is present in the request.
-    4) If not, Use a tracing percent (default: 0.5%) to decide.
+
+    1. Check whether the current request path is blacklisted.
+    2. If not, check whether the current request route is blacklisted.
+    3. If not, check if specific sampled header is present in the request.
+    4. If not, Use a tracing percent (default: 0.5%) to decide.
 
     :param request: pyramid request object
-
-    :returns: boolean True if zipkin should be tracing
+    :returns: True if zipkin should be tracing
     """
     if should_not_sample_path(request):
         return False
@@ -115,6 +123,7 @@ def is_tracing(request):
 
 
 def create_zipkin_attr(request):
+    # type: (Request) -> ZipkinAttrs
     """Create ZipkinAttrs object from a request with sampled flag as True.
     Attaches lazy attribute `zipkin_trace_id` with request which is then used
     throughout the tween.
@@ -123,7 +132,6 @@ def create_zipkin_attr(request):
     if one is set in the pyramid registry.
 
     :param request: pyramid request object
-    :rtype: :class:`pyramid_zipkin.request_helper.ZipkinAttrs`
     """
     settings = request.registry.settings
 
@@ -148,6 +156,7 @@ def create_zipkin_attr(request):
 
 
 def get_binary_annotations(request, response):
+    # type: (Request, Response) -> Dict[str, str]
     """Helper method for getting all binary annotations from the request.
 
     :param request: the Pyramid request object

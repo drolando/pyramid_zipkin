@@ -20,6 +20,7 @@ setup(
         'py_zipkin >= 0.18.1',
         'pyramid',
         'six',
+        'typing',
     ],
     classifiers=[
         "Development Status :: 5 - Production/Stable",

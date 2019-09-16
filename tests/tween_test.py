@@ -16,7 +16,7 @@ DummyRequestContext = collections.namedtuple(
 
 
 @pytest.mark.parametrize('is_tracing', [True, False])
-@mock.patch.object(get_default_tracer(), 'zipkin_span', autospec=True)
+@mock.patch('pyramid_zipkin.tween.zipkin_span', autospec=True)
 def test_zipkin_tween_sampling(
     mock_span,
     dummy_request,
@@ -41,7 +41,7 @@ def test_zipkin_tween_sampling(
 
 @pytest.mark.parametrize(['set_callback', 'called'], [(False, 0), (True, 1)])
 @pytest.mark.parametrize('is_tracing', [True, False])
-@mock.patch.object(get_default_tracer(), 'zipkin_span', autospec=True)
+@mock.patch('pyramid_zipkin.tween.zipkin_span', autospec=True)
 def test_zipkin_tween_post_handler_hook(
     mock_span,
     dummy_request,

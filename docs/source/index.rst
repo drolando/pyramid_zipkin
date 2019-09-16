@@ -37,7 +37,8 @@ Contents:
 
    configuring_zipkin
    pyramid_zipkin
-   changelog
+   release_notes
+
 
 Indices and tables
 ==================

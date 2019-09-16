@@ -1,13 +1,19 @@
 # -*- coding: utf-8 -*-
 import functools
 import warnings
-from collections import namedtuple
 
 from py_zipkin import Encoding
 from py_zipkin import Kind
 from py_zipkin.exception import ZipkinError
-from py_zipkin.storage import get_default_tracer
+from py_zipkin.storage import Stack
 from py_zipkin.transport import BaseTransportHandler
+from py_zipkin.zipkin import zipkin_span
+from py_zipkin.zipkin import ZipkinAttrs
+from pyramid.request import Request
+from pyramid.request import Response
+from typing import Any
+from typing import Callable
+from typing import NamedTuple
 
 from pyramid_zipkin.request_helper import create_zipkin_attr
 from pyramid_zipkin.request_helper import get_binary_annotations
@@ -16,6 +22,7 @@ from pyramid_zipkin.request_helper import should_not_sample_route
 
 
 def _getattr_path(obj, path):
+    # type: (Request, str) -> Any
     """
     getattr for a dot separated path
 
@@ -29,25 +36,26 @@ def _getattr_path(obj, path):
     return obj
 
 
-_ZipkinSettings = namedtuple('ZipkinSettings', [
-    'zipkin_attrs',
-    'transport_handler',
-    'service_name',
-    'span_name',
-    'add_logging_annotation',
-    'report_root_timestamp',
-    'host',
-    'port',
-    'context_stack',
-    'firehose_handler',
-    'post_handler_hook',
-    'max_span_batch_size',
-    'use_pattern_as_span_name',
-    'encoding',
+_ZipkinSettings = NamedTuple('ZipkinSettings', [
+    ('zipkin_attrs', ZipkinAttrs),
+    ('transport_handler', BaseTransportHandler),
+    ('service_name', str),
+    ('span_name', str),
+    ('add_logging_annotation', bool),
+    ('report_root_timestamp', bool),
+    ('host', str),
+    ('port', int),
+    ('context_stack', Stack),
+    ('firehose_handler', BaseTransportHandler),
+    ('post_handler_hook', Callable[[Request, Response], None]),
+    ('max_span_batch_size', int),
+    ('use_pattern_as_span_name', bool),
+    ('encoding', Encoding),
 ])
 
 
 def _get_settings_from_request(request):
+    # type: (Request) -> _ZipkinSettings
     """Extracts Zipkin attributes and configuration from request attributes.
     See the `zipkin_span` context in py-zipkin for more detaied information on
     all the settings.
@@ -143,6 +151,7 @@ def _get_settings_from_request(request):
 
 
 def zipkin_tween(handler, registry):
+    # type: (Callable[[Request], Response], Any) -> Callable[[Request], Response]
     """
     Factory for pyramid tween to handle zipkin server logging. Note that even
     if the request isn't sampled, Zipkin attributes are generated and pushed
@@ -158,10 +167,19 @@ def zipkin_tween(handler, registry):
     :returns: pyramid tween
     """
     def tween(request):
+        # type: (Request) -> Response
         zipkin_settings = _get_settings_from_request(request)
-        tracer = get_default_tracer()
 
-        tween_kwargs = dict(
+        firehose_handler = None
+        # Only set the firehose_handler if it's defined and only if the current
+        # request is not blacklisted. This prevents py_zipkin from emitting
+        # firehose spans for blacklisted paths like /status
+        if zipkin_settings.firehose_handler is not None and \
+                not should_not_sample_path(request) and \
+                not should_not_sample_route(request):
+            firehose_handler = zipkin_settings.firehose_handler
+
+        with zipkin_span(
             service_name=zipkin_settings.service_name,
             span_name=zipkin_settings.span_name,
             zipkin_attrs=zipkin_settings.zipkin_attrs,
@@ -174,17 +192,9 @@ def zipkin_tween(handler, registry):
             max_span_batch_size=zipkin_settings.max_span_batch_size,
             encoding=zipkin_settings.encoding,
             kind=Kind.SERVER,
-        )
+            firehose_handler=firehose_handler,
+        ) as zipkin_context:
 
-        # Only set the firehose_handler if it's defined and only if the current
-        # request is not blacklisted. This prevents py_zipkin from emitting
-        # firehose spans for blacklisted paths like /status
-        if zipkin_settings.firehose_handler is not None and \
-                not should_not_sample_path(request) and \
-                not should_not_sample_route(request):
-            tween_kwargs['firehose_handler'] = zipkin_settings.firehose_handler
-
-        with tracer.zipkin_span(**tween_kwargs) as zipkin_context:
             response = handler(request)
             if zipkin_settings.use_pattern_as_span_name and request.matched_route:
                 zipkin_context.override_span_name('{} {}'.format(
